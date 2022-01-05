@@ -1,0 +1,15 @@
+PUT PRISM NORMALS INTO RANDOM ACCESS FILE                                  **RECORD TYPE 1
+   0   0   0   0                                                           **RECORD TYPE 2
+ 26    STATION LIST                                                        **INPUT STATION LIST
+ 27    STATION TABLE                                                       **STATION TABLE
+ 99
+ 49    OUTPUT RANDOM ACCESS FILE                                           **RANDOM ACCESS FILE (OUT)
+ 99  
+ 20    INPUT TDLPACK SEQUENTIAL FILE                                       **INPUT SEQ. DATA
+ 99                                                                  
+422540000 000000000 000000108 000000400                                    MAX TEMP 5-DAY NORM
+422540000 000000000 000000120 000000400                                    MAX TEMP 5-DAY NORM
+422541000 000000000 000000096 000000400                                    MIN TEMP 5-DAY NORM
+422541000 000000000 000000108 000000400                                    MIN TEMP 5-DAY NORM
+999999            0         0         0                           
+ 99                                                                        **BLANK LINE REQUIRED TO END?

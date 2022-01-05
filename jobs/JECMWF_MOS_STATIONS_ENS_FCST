@@ -1,0 +1,128 @@
+#!/bin/sh
+date
+export PS4=' $(basename $0).$LINENO: $SECONDS + '
+set -xa
+
+envir=${envir:?}                # Typically set to prod
+DATAROOT=${DATAROOT:?}          # Typically default to {DATAROOT:-/tmpnwprd1}
+COMROOT=${COMROOT:?}            # Typically default to -/com
+PACKAGEROOT=${PACKAGEROOT:?}   
+
+####################################
+# obtain unique process id (pid) and make temp directory
+####################################
+export DATA=${DATA:-${DATAROOT}/${jobid}}
+mkdir -p $DATA
+cd $DATA
+export cycle=${cycle:-t${cyc}z}
+
+####################################
+# File To Log Msgs
+####################################
+export jlogfile=${jlogfile:-${DATA}/jlogfile.${jobid}}
+
+####################################
+# Specify NET Name and model
+#
+# model - model grib field to repack
+####################################
+export NET=${NET:-ecmwf_mos}
+export RUN=${RUN:-ecmwf_mos}
+export model=${model:-ecmwf_mos}
+
+##################################################
+# SENDECF  - Flag Events on ECF
+# SENDCOM  - Copy Files From TMPDIR to $COMOUT
+# SENDDBN  - Issue DBNet Client Calls
+##################################################
+export SENDCOM=${SENDCOM:-YES}
+export SENDDBN=${SENDDBN:-YES}
+export SENDECF=${SENDECF:-YES}
+export GET_IOPROFILE=${GET_IOPROFILE:-NO}
+
+####################################
+# Determine Job Output Name on System
+####################################
+export pgmout="OUTPUT.$$"
+
+####################################
+# Specify ECMWF-MOS version number
+####################################
+export ECMWFMOS_MODEL_VERSION=${ECMWFMOS_MODEL_VERSION:-${ecmwf_mos_ver}}
+export ECMWFMOS_CODE_VERSION=${ECMWFMOS_CODE_VERSION:-${mos_shared_ver}}
+
+####################################
+# Specify Execution Areas
+####################################
+export HOMEmdl=${HOMEmdl:-$PACKAGEROOT/ecmwf_mos.${ECMWFMOS_MODEL_VERSION}}
+export FIXmdl=${FIXmdl:-$HOMEmdl/fix}
+export PARMmdl=${PARMmdl:-$HOMEmdl/parm}
+
+##############################
+# Run setpdy and initialize PDY variables
+##############################
+setpdy.sh
+. ./PDY
+
+##############################################
+# Define COM directories
+##############################################
+export COMIN=${COMIN:-$(compath.py ${envir}$NET/${ecmwf_mos_ver})/${RUN}.${PDY}}
+export COMOUT=${COMOUT:-$(compath.py -o ${NET}/${ecmwf_mos_ver}/${RUN}.${PDY})}
+export COMINhry_mos=${COMINhry_mos:-$(compath.py hry_mos/${hry_mos_ver}/hry_mos.$PDY)}
+export DCOMIN=${DCOMIN:-${DCOMROOT}/${PDY}/wgrbbul/ecmwf}
+export pcom=${pcom:-${COMOUT}/wmo}
+
+mkdir -m 775 -p $COMOUT $pcom
+env
+
+##################################################
+# Check for data availability
+##################################################
+Ref_date=`echo $PDY | cut -c 5-8`$cyc
+Valid_date=`$NDATE +360 ${PDY}${cyc} | cut -c5-10`
+Last_file=$DCOMIN/DCE${Ref_date}00${Valid_date}001
+let attempts=1
+while [ $attempts -le 60 ]; do
+   if [ -f $Last_file ]; then
+      break
+   else
+      sleep 60
+      attempts=$((attempts+1))
+   fi
+done
+if [ $attempts -gt 60 ] && [ ! -f $Last_file ]; then
+   echo "Data still not available after waiting 60 minutes... exiting"
+   date
+   exit 1
+fi
+
+##################################################
+# Build the MPMD script from all perturbations
+##################################################
+if [[ -f $DATA/mpmdscript ]]; then
+   rm -f $DATA/mpmdscript
+fi
+
+#  Set-up a poescript that will allow for all ensembles to be processed 
+#  simultaneously. 
+pertlist=`seq 0 50`
+for pert in $pertlist
+do
+   echo "${HOMEmdl}/scripts/execmwf_mos_stations_ens_fcst.sh $pert 2>&1 | sed 's/^/stnfcst_${pert}:/'" >> $DATA/mpmdscript
+done
+
+########################################
+# EXECUTE THE SCRIPT
+########################################
+chmod 755 $DATA/mpmdscript
+export MP_LABELIO=YES
+export MP_STDOUTMODE=unordered
+mpiexec --cpu-bind core -n $NTASK -ppn $PTILE cfp $DATA/mpmdscript
+export err=$?; err_chk
+date
+
+if [ "$KEEPDATA" != YES ]; then
+   cd $DATAROOT
+   rm -rf $DATA
+fi
